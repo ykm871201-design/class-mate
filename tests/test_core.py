@@ -635,9 +635,10 @@ def test_updater_check_download_and_modes():
     old = os.environ.get("LOCALAPPDATA")
     os.environ["LOCALAPPDATA"] = "/home/t/AppData/Local"
     try:
-        assert "/CURRENTUSER" in updater.installer_args("/home/t/AppData/Local/Programs/ClassMate/ClassMate.exe")
-        assert "/ALLUSERS" in updater.installer_args("/opt/Program Files/ClassMate/ClassMate.exe")
-        assert "/SILENT" in updater.installer_args("/x/ClassMate.exe")
+        assert "/CURRENTUSER" in updater.installer_args("/home/t/AppData/Local/Programs/ClassMate/ClassMate.exe", use_registry=False)
+        assert "/ALLUSERS" in updater.installer_args("/opt/Program Files/ClassMate/ClassMate.exe", use_registry=False)
+        assert "/ALLUSERS" in updater.installer_args("/home/t/AppData/LocalX/ClassMate.exe", use_registry=False)  # 이름만 비슷한 폴더
+        assert "/SILENT" in updater.installer_args("/x/ClassMate.exe", use_registry=False)
     finally:
         if old is None:
             del os.environ["LOCALAPPDATA"]

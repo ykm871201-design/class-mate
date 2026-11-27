@@ -69,7 +69,7 @@ def update_status():
     mode = updater.install_mode()
     return {"version": VERSION, "mode": mode, "auto_check": app_settings()["auto_update_check"],
             "mode_label": {"installer": "설치판", "portable": "휴대용(zip)", "source": "소스 실행"}[mode],
-            "page": updater.RELEASES_PAGE}
+            "page": updater.RELEASES_PAGE, "scope": updater.install_scope() if mode == "installer" else None}
 
 
 def start_update():

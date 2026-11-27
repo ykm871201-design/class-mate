@@ -48,6 +48,7 @@ def main(setup):
     st = call("GET", "update/status")
     print("설치 후 실행:", first["version"], st["mode_label"], "pid", first["pid"])
     assert st["mode"] == "installer", st
+    assert st["scope"] == "user", st  # 사용자별 설치로 인식해야 업데이트가 관리자 권한 없이 같은 위치에 덮어씀
     p = call("POST", "projects/sample")
     p["name"] = "업데이트 전 저장한 프로젝트"
     call("PUT", "projects/" + p["id"], p)

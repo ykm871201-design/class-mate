@@ -111,11 +111,41 @@ def download(asset, dest_dir=None, timeout=60, opener=None):
     return path
 
 
-def installer_args(exe=None):
+UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E3C5B2A-7D41-4F7B-9C2E-3A1D6B0F9E21}_is1"  # installer.iss 의 AppId
+
+
+def _norm(p):
+    # realpath: Windows 의 짧은 이름(RUNNER~1 등)을 긴 이름으로 바꿔 같은 폴더를 같게 비교
+    return os.path.normcase(os.path.realpath(os.path.abspath(p)))
+
+
+def install_scope(exe=None, use_registry=True):
+    """'user'(사용자별 설치) 또는 'all'(모든 사용자 설치). 설치 프로그램이 남긴 제거 정보를 먼저 보고, 없으면 경로로 판단."""
+    if use_registry and os.name == "nt":
+        try:
+            import winreg
+            for hive, scope in ((winreg.HKEY_CURRENT_USER, "user"), (winreg.HKEY_LOCAL_MACHINE, "all")):
+                for view in (0, winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+                    try:
+                        with winreg.OpenKey(hive, UNINSTALL_KEY, 0, winreg.KEY_READ | view):
+                            return scope
+                    except OSError:
+                        continue
+        except ImportError:
+            pass
+    local = os.environ.get("LOCALAPPDATA") or ""
+    if not local:
+        return "all"
+    exe_dir, local = _norm(os.path.dirname(exe or sys.executable)), _norm(local)
+    try:
+        return "user" if os.path.commonpath([exe_dir, local]) == local else "all"
+    except ValueError:  # 서로 다른 드라이브
+        return "all"
+
+
+def installer_args(exe=None, use_registry=True):
     """현재 설치 위치(사용자별/모든 사용자)에 그대로 덮어쓰도록 설치 옵션을 정한다."""
-    exe_dir = os.path.abspath(os.path.dirname(exe or sys.executable)).lower()
-    local = (os.environ.get("LOCALAPPDATA") or "").lower()
-    scope = "/CURRENTUSER" if local and exe_dir.startswith(local) else "/ALLUSERS"
+    scope = "/CURRENTUSER" if install_scope(exe, use_registry) == "user" else "/ALLUSERS"
     return ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/SP-", scope]
 
 
