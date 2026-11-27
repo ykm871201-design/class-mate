@@ -170,13 +170,10 @@ class-planner/
 ```
 
 ### 새 버전 릴리스 만들기 (GitHub Actions 자동)
-- `main` 에 올릴 때마다 Linux·Windows에서 검증 테스트를 돌리고, Windows 설치 파일을 빌드한 뒤 exe를 실제로 실행해 자동 편성·엑셀·저장을 확인합니다. 결과물은 Actions 실행 화면의 **Artifacts** 에서 받을 수 있습니다.
-- **`v` 로 시작하는 태그를 올리면 GitHub 릴리스가 자동으로 만들어지고** 설치 파일(`ClassMate-Setup-버전.exe`)과 휴대용 zip이 첨부됩니다. 버전 번호는 태그에서 가져옵니다.
-  ```bash
-  git tag v1.0.1
-  git push origin v1.0.1
-  ```
-  또는 GitHub 웹에서 **Releases → Draft a new release → Choose a tag** 에 `v1.0.1` 처럼 새 태그를 입력하고 게시해도 됩니다(태그가 만들어지면 빌드가 시작되어 파일이 첨부됨).
+- `main` 에 올릴 때마다 Linux·Windows에서 검증 테스트를 돌리고, Windows 설치 파일을 빌드한 뒤 exe를 실제로 실행해 자동 편성·엑셀·저장과 **설치 → 업데이트 → 자동 재실행**을 확인합니다. 결과물은 Actions 실행 화면의 **Artifacts** 에서 받을 수 있습니다.
+- **새 버전을 내는 방법: `server.py` 의 `VERSION = "x.y.z"` 를 올려서 `main` 에 병합하면 끝입니다.** `v{버전}` 태그가 아직 없으면 GitHub Actions가 빌드·테스트가 모두 통과한 뒤 태그와 릴리스를 직접 만들고 설치 파일(`ClassMate-Setup-버전.exe`)과 휴대용 zip을 첨부합니다. 이미 있는 버전이면 릴리스를 만들지 않고 빌드·테스트만 합니다.
+- 프로그램 안의 **⬆ 업데이트** 버튼은 이렇게 만들어진 최신 릴리스를 찾아 설치합니다.
+- GitHub 웹에서 **Releases → Draft a new release** 로 `v1.0.3` 같은 새 태그를 직접 게시해도 됩니다(빌드가 끝나면 파일이 자동 첨부). 이때는 태그의 버전이 프로그램 버전으로 쓰입니다.
 - 직접 빌드하려면 (Windows): `pip install pyinstaller anthropic` → `pyinstaller --noconfirm --clean packaging/classmate.spec` → Inno Setup 6 설치 후 `ISCC.exe /DAppVersion=1.0.0 packaging\installer.iss` → `dist` 폴더에 설치 파일 생성.
 
 - 필요 환경(소스 실행): Python 3.9 이상 (3.9·3.11·3.13에서 테스트). 외부 패키지 설치 불필요.

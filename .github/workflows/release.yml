@@ -1,7 +1,10 @@
 name: 빌드 및 릴리스
 
 # main 에 올릴 때마다: 테스트 + Windows 설치 파일 빌드(Actions 결과물로 보관)
-# v로 시작하는 태그(예: v1.0.0)를 올리면: 위 과정 + GitHub 릴리스 자동 생성
+#   └ server.py 의 VERSION 이 아직 릴리스되지 않은 새 버전이면(v{버전} 태그가 없으면)
+#     GitHub Actions 가 태그와 릴리스를 직접 만들고 설치 파일을 첨부한다.
+#     → 새 버전을 내려면 server.py 의 VERSION 만 올려서 main 에 병합하면 된다.
+# v로 시작하는 태그(예: v1.0.0)를 직접 게시해도 같은 방식으로 릴리스에 파일이 첨부된다.
 on:
   push:
     branches: [main]
@@ -11,6 +14,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test:
@@ -45,6 +52,21 @@ jobs:
           echo "VERSION=$V" >> "$GITHUB_ENV"
           sed -i "s/^VERSION = \".*\"/VERSION = \"$V\"/" server.py
           echo "버전: $V"
+          RELEASE=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE=true
+          elif [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
+            if ! EXISTING="$(git ls-remote --tags origin "refs/tags/v$V")"; then
+              echo "태그 확인에 실패했습니다 (릴리스를 만들지 않고 중단)"; exit 1
+            fi
+            if [[ -z "$EXISTING" ]]; then
+              RELEASE=true
+              echo "v$V 태그가 아직 없으므로 이번 빌드로 릴리스를 만듭니다."
+            else
+              echo "v$V 는 이미 릴리스된 버전이므로 빌드·테스트만 합니다."
+            fi
+          fi
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
 
       - name: 검증 기준 자동 테스트 (Windows)
         env:
@@ -97,12 +119,15 @@ jobs:
             dist/ClassMate-Setup-${{ env.VERSION }}.exe
             dist/ClassMate-Portable-${{ env.VERSION }}.zip
 
-      - name: GitHub 릴리스 만들기
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: GitHub 릴리스 만들기 (태그·릴리스 생성, 설치 파일 첨부)
+        if: env.RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
           name: 학급 편성 도우미 ${{ env.VERSION }}
           body_path: packaging/release_notes.md
+          generate_release_notes: true
           files: |
             dist/ClassMate-Setup-${{ env.VERSION }}.exe
             dist/ClassMate-Portable-${{ env.VERSION }}.zip
