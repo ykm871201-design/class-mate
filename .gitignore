@@ -1,0 +1,11 @@
+# 실행 중 만들어지는 학생 자료 (절대 올리지 마세요)
+data/
+
+# 파이썬·빌드 결과물
+__pycache__/
+*.pyc
+build/
+dist/
+*.egg-info/
+.venv/
+venv/

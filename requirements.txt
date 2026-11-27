@@ -1,0 +1,6 @@
+# 필수 의존성은 vendor 폴더에 포함되어 있어 따로 설치할 필요가 없습니다.
+# openpyxl==3.1.5  (vendor/openpyxl, MIT)
+# et_xmlfile==2.0.0  (vendor/et_xmlfile, MIT)
+#
+# 선택: AI 보조 기능에서 Anthropic Claude API 를 쓸 때만
+# anthropic

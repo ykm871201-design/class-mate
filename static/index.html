@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>학급 편성 도우미</title>
+<link rel="stylesheet" href="/css/style.css">
+<link rel="icon" href="/icon.png">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">🏫 학급 편성 도우미 <span class="ver">학생 특성 기반 학급 편성</span></div>
+  <div class="proj-name" id="projName">프로젝트를 열거나 만드세요</div>
+  <div class="top-actions">
+    <span id="saveBadge" class="save-badge" role="status" aria-live="polite">저장할 내용 없음</span>
+    <button id="shareBtn" class="btn btn-sm" aria-pressed="false" title="학생 이름을 가리고 특성·관계 사유를 숨깁니다">🖥 화면 공유용 보기: 꺼짐</button>
+    <button id="aiBtn" class="btn btn-sm" title="AI 보조 기능 연결 설정">🤖 AI 연결 설정</button>
+  </div>
+</header>
+<nav class="tabs" id="tabs" role="tablist">
+  <button data-tab="project" role="tab">① 프로젝트</button>
+  <button data-tab="students" role="tab">② 학생 명단 · ③ 특성 입력</button>
+  <button data-tab="features" role="tab">특성 항목 관리</button>
+  <button data-tab="relations" role="tab">④ 관계 및 편성 조건</button>
+  <button data-tab="solve" role="tab">⑤ 자동 편성</button>
+  <button data-tab="results" role="tab">⑥ 결과 비교 및 조정</button>
+  <button data-tab="output" role="tab">⑦ 저장 및 출력</button>
+</nav>
+<div id="shareBanner" class="share-banner hidden">🖥 화면 공유용 보기 중 — 학생 이름은 가려지고 특성·메모·관계 사유는 표시되지 않습니다.</div>
+<main id="main" tabindex="-1"></main>
+<div id="modalRoot"></div>
+<div id="toastRoot" aria-live="polite"></div>
+<script src="/js/core.js"></script>
+<script src="/js/ai.js"></script>
+<script src="/js/project.js"></script>
+<script src="/js/students.js"></script>
+<script src="/js/features.js"></script>
+<script src="/js/relations.js"></script>
+<script src="/js/solve.js"></script>
+<script src="/js/results.js"></script>
+<script src="/js/output.js"></script>
+<script src="/js/start.js"></script>
+</body>
+</html>

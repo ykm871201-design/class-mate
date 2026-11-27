@@ -1,0 +1,103 @@
+name: 빌드 및 릴리스
+
+# main 에 올릴 때마다: 테스트 + Windows 설치 파일 빌드(Actions 결과물로 보관)
+# v로 시작하는 태그(예: v1.0.0)를 올리면: 위 과정 + GitHub 릴리스 자동 생성
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: 검증 테스트 (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 검증 기준 자동 테스트
+        run: python tests/test_core.py
+
+  windows:
+    name: Windows 설치 파일 빌드
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 버전 정하기
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="$(python -c "import re;print(re.search(r'VERSION = \"([^\"]+)\"', open('server.py', encoding='utf-8').read()).group(1))")"
+          fi
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          sed -i "s/^VERSION = \".*\"/VERSION = \"$V\"/" server.py
+          echo "버전: $V"
+
+      - name: 검증 기준 자동 테스트 (Windows)
+        env:
+          PYTHONUTF8: "1"
+        run: python tests/test_core.py
+
+      - name: 빌드 도구 설치
+        run: python -m pip install --upgrade pip pyinstaller anthropic
+
+      - name: exe 만들기 (PyInstaller)
+        run: pyinstaller --noconfirm --clean packaging/classmate.spec
+
+      - name: exe 실행 확인 (자동 편성·엑셀·저장)
+        env:
+          PYTHONUTF8: "1"
+        run: python packaging/smoke_test.py dist\ClassMate\ClassMate.exe
+
+      - name: Inno Setup 준비
+        shell: pwsh
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw "Inno Setup 을 찾을 수 없습니다" }
+          "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: 설치 파일 만들기 (Inno Setup)
+        shell: pwsh
+        run: '& $env:ISCC "/DAppVersion=$env:VERSION" packaging\installer.iss'
+
+      - name: 휴대용(설치 없이 쓰는) zip 만들기
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse samples dist\ClassMate\samples
+          Copy-Item README.md dist\ClassMate\사용설명서.txt
+          Compress-Archive -Path dist\ClassMate\* -DestinationPath "dist\ClassMate-Portable-$env:VERSION.zip"
+
+      - name: 결과물 보관 (Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClassMate-${{ env.VERSION }}
+          path: |
+            dist/ClassMate-Setup-${{ env.VERSION }}.exe
+            dist/ClassMate-Portable-${{ env.VERSION }}.zip
+
+      - name: GitHub 릴리스 만들기
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 학급 편성 도우미 ${{ env.VERSION }}
+          body_path: packaging/release_notes.md
+          files: |
+            dist/ClassMate-Setup-${{ env.VERSION }}.exe
+            dist/ClassMate-Portable-${{ env.VERSION }}.zip
