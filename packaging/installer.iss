@@ -56,3 +56,5 @@ Name: "{autodesktop}\학급 편성 도우미"; Filename: "{app}\{#AppExe}"; Work
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "지금 학급 편성 도우미 실행"; Flags: nowait postinstall skipifsilent
+; 프로그램 안의 [업데이트] 버튼으로 조용히 설치한 경우: 설치가 끝나면 자동으로 다시 실행
+Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Flags: nowait runasoriginaluser; Check: WizardSilent

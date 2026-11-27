@@ -77,6 +77,11 @@ jobs:
         shell: pwsh
         run: '& $env:ISCC "/DAppVersion=$env:VERSION" packaging\installer.iss'
 
+      - name: 설치 → 자동 업데이트 → 재실행 실제 확인
+        env:
+          PYTHONUTF8: "1"
+        run: python packaging/update_test.py dist\ClassMate-Setup-${{ env.VERSION }}.exe
+
       - name: 휴대용(설치 없이 쓰는) zip 만들기
         shell: pwsh
         run: |

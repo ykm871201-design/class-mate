@@ -595,6 +595,57 @@ def test_template_has_dropdown_for_every_choice_item():
         assert dv[0].showErrorMessage == (f["type"] != "multi")  # 다중 선택은 쉼표로 여러 개 직접 입력 허용
 
 
+def test_updater_check_download_and_modes():
+    import hashlib
+    from app import updater
+    assert updater.parse_version("v1.0.10") > updater.parse_version("1.0.9") > updater.parse_version("1.0")
+    rel = {"tag_name": "v1.2.0", "body": "바뀐 점", "html_url": "https://github.com/x", "assets": [
+        {"name": "ClassMate-Setup-1.2.0.exe", "size": 5, "digest": "sha256:" + hashlib.sha256(b"hello").hexdigest(),
+         "browser_download_url": f"https://github.com/{updater.REPO}/releases/download/v1.2.0/ClassMate-Setup-1.2.0.exe"},
+        {"name": "ClassMate-Portable-1.2.0.zip", "size": 9, "browser_download_url": "https://github.com/z"}]}
+    r = updater.check("1.0.1", fetch=lambda url, t: rel)
+    assert r["newer"] and r["latest"] == "1.2.0" and r["setup"]["size"] == 5 and r["portable"]
+    assert not updater.check("1.2.0", fetch=lambda url, t: rel)["newer"]
+    assert not updater.check("2.0.0", fetch=lambda url, t: rel)["newer"]
+
+    class Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    with tempfile.TemporaryDirectory() as d:
+        p = updater.download(r["setup"], d, opener=lambda req, timeout: Resp(b"hello"))
+        assert open(p, "rb").read() == b"hello"
+        for bad, body in ((dict(r["setup"], digest="sha256:" + "0" * 64), b"hello"), (r["setup"], b"hell"),
+                          (dict(r["setup"], url="https://evil.example/ClassMate-Setup-1.2.0.exe"), b"hello"),
+                          (dict(r["setup"], name="evil.exe"), b"hello")):
+            try:
+                updater.download(bad, d, opener=lambda req, timeout, body=body: Resp(body))
+                assert False, "검증 실패 파일을 받아들임"
+            except updater.UpdateError:
+                pass
+        # 설치 방식 판별: 설치판에는 제거 프로그램(unins000.exe)이 함께 있음
+        open(os.path.join(d, "ClassMate.exe"), "w").close()
+        assert updater.install_mode(True, os.path.join(d, "ClassMate.exe")) == "portable"
+        open(os.path.join(d, "unins000.exe"), "w").close()
+        assert updater.install_mode(True, os.path.join(d, "ClassMate.exe")) == "installer"
+        assert updater.install_mode(False) == "source"
+    old = os.environ.get("LOCALAPPDATA")
+    os.environ["LOCALAPPDATA"] = "/home/t/AppData/Local"
+    try:
+        assert "/CURRENTUSER" in updater.installer_args("/home/t/AppData/Local/Programs/ClassMate/ClassMate.exe", use_registry=False)
+        assert "/ALLUSERS" in updater.installer_args("/opt/Program Files/ClassMate/ClassMate.exe", use_registry=False)
+        assert "/ALLUSERS" in updater.installer_args("/home/t/AppData/LocalX/ClassMate.exe", use_registry=False)  # 이름만 비슷한 폴더
+        assert "/SILENT" in updater.installer_args("/x/ClassMate.exe", use_registry=False)
+    finally:
+        if old is None:
+            del os.environ["LOCALAPPDATA"]
+        else:
+            os.environ["LOCALAPPDATA"] = old
+
+
 def test_cause_check_by_recalculation():
     p, r = solved_sample()
     a = dict(r["alternatives"][0]["assignment"])
