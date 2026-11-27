@@ -108,24 +108,54 @@ def make_template(project):
     ws.add_data_validation(dv_yn)
     dv_g.add("F2:F1000")
     dv_yn.add("G2:H1000")
-    cls_names = ",".join(c["name"] for c in project["classes"])
-    if cls_names and len(cls_names) < 250:
-        dv_c = DataValidation(type="list", formula1=f'"{cls_names}"', allow_blank=True)
-        ws.add_data_validation(dv_c)
-        dv_c.add("I2:I1000")
+    # 선택지 목록은 별도 시트에 적고 드롭다운이 그 범위를 참조한다
+    # (엑셀의 드롭다운 직접 입력은 255자 제한이 있고 쉼표가 든 선택지를 쓸 수 없기 때문)
+    lists = wb.create_sheet("선택 목록")
+    lists.append(["드롭다운 선택지 목록 — 이 시트는 고치지 마세요"])
+    list_col = [0]
+
+    def dropdown(col, values, title, prompt, strict=True):
+        list_col[0] += 1
+        lc = get_column_letter(list_col[0])
+        lists.cell(row=2, column=list_col[0], value=title[:40]).font = BOLD
+        for i, v in enumerate(values):
+            lists.cell(row=3 + i, column=list_col[0], value=v)
+        dv = DataValidation(type="list", formula1=f"'선택 목록'!${lc}$3:${lc}${2 + len(values)}", allow_blank=True)
+        dv.promptTitle = title[:32]
+        dv.prompt = prompt[:250]
+        dv.showInputMessage = True
+        dv.errorTitle = "입력할 수 없는 값"
+        dv.error = (prompt + " (빈칸 = 미입력)")[:250]
+        dv.showErrorMessage = strict  # 다중 선택은 쉼표로 여러 개를 직접 입력할 수 있어야 함
+        ws.add_data_validation(dv)
+        dv.add(f"{col}2:{col}1000")
+
+    if project["classes"]:
+        dropdown("I", [c["name"] for c in project["classes"]], "지정 학급", "이 학생을 반드시 배정할 학급을 고르세요. 지정하지 않으면 비워 두세요.")
     for j, f in enumerate(feats):
         col = get_column_letter(len(BASE_FIELDS) + 1 + j)
-        dv = None
-        if f["type"] == "single" and f.get("options") and len(",".join(f["options"])) < 250:
-            dv = DataValidation(type="list", formula1='"' + ",".join(f["options"]) + '"', allow_blank=True)
-        elif f["type"] == "yesno":
-            dv = DataValidation(type="list", formula1='"예,아니요"', allow_blank=True)
-        elif f["type"] == "level":
-            dv = DataValidation(type="decimal", operator="between", formula1=str(f.get("min", 1)), formula2=str(f.get("max", 5)), allow_blank=True)
-            dv.error = feature_input_help(f)
-        if dv:
-            ws.add_data_validation(dv)
-            dv.add(f"{col}2:{col}1000")
+        t = f["type"]
+        if t == "single" and f.get("options"):
+            dropdown(col, list(f["options"]), f["name"], "목록에서 하나를 고르세요.")
+        elif t == "yesno":
+            dropdown(col, ["예", "아니요"], f["name"], "예 또는 아니요를 고르세요.")
+        elif t == "multi" and f.get("options"):
+            dropdown(col, list(f["options"]) + ["해당 없음"], f["name"],
+                     "하나는 목록에서 고르고, 여러 개는 쉼표로 구분해 직접 입력하세요 (예: " + ", ".join(f["options"][:2]) + "). 해당하는 것이 없으면 ‘해당 없음’.",
+                     strict=False)
+        elif t == "level":
+            steps = level_steps(f)
+            if len(steps) <= 11:
+                dropdown(col, [level_label(f, s) for s in steps], f["name"], "목록에서 단계를 고르세요. 숫자만 입력해도 됩니다.")
+            else:
+                dv = DataValidation(type="decimal", operator="between", formula1=str(f.get("min", 1)), formula2=str(f.get("max", 5)), allow_blank=True)
+                dv.error = feature_input_help(f)
+                dv.promptTitle = f["name"][:32]
+                dv.prompt = feature_input_help(f)[:250]
+                ws.add_data_validation(dv)
+                dv.add(f"{col}2:{col}1000")
+    _widths(lists, [22] * max(1, list_col[0]))
+    lists.sheet_state = "hidden"
 
     g = wb.create_sheet("특성 입력 안내")
     g.append(["학생 특성 입력 안내"])
@@ -215,6 +245,7 @@ def make_template(project):
                 ["반드시", "반마다 최대 N명", "S0001, S0002, S0003", "", 2, "", ""]]:
         e.append(row)
     _widths(e, [12, 10, 9, 9, 9, 7, 9, 9, 10, 28] + [16] * len(feats))
+    wb.move_sheet(lists, offset=len(wb.sheetnames) - 1 - wb.sheetnames.index(lists.title))  # 숨김 목록 시트는 맨 뒤로
     bio = io.BytesIO()
     wb.save(bio)
     return bio.getvalue()

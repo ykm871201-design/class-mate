@@ -571,6 +571,30 @@ def test_fix_suggestion_decrease_in_class():
     assert evaluate.check_hard(p, c["assignment"]) == [] and c["moved_count"] <= 6
 
 
+def test_template_has_dropdown_for_every_choice_item():
+    """선택형·단계형·예/아니요·다중 선택 항목은 모두 양식에 드롭다운이 있고, 고른 값이 그대로 불러와져야 한다."""
+    from openpyxl.utils import get_column_letter
+    p = new_project()
+    for f in p["features"]:
+        f["active"] = True
+    wb = load_workbook(io.BytesIO(excel_io.make_template(p)))
+    assert wb.sheetnames[:3] == ["학생 명단", "특성 입력 안내", "학생 간 관계"] and wb["선택 목록"].sheet_state == "hidden"
+    ws, lists = wb["학생 명단"], wb["선택 목록"]
+    hdr = [c.value for c in ws[1]]
+    for f in p["features"]:
+        if f["type"] == "text":
+            continue
+        col = get_column_letter(hdr.index(f["name"]) + 1)
+        dv = [d for d in ws.data_validations.dataValidation if any(str(r).startswith(col + "2") for r in d.sqref.ranges)]
+        assert dv and dv[0].type == "list", f"{f['name']} 드롭다운 없음"
+        vals = [c.value for row in lists[dv[0].formula1.split("!")[1].replace("$", "")] for c in row]
+        assert len(vals) >= 2
+        for v in vals:
+            parsed, err = excel_io.parse_feature_value(f, str(v))
+            assert err is None, (f["name"], v, err)
+        assert dv[0].showErrorMessage == (f["type"] != "multi")  # 다중 선택은 쉼표로 여러 개 직접 입력 허용
+
+
 def test_cause_check_by_recalculation():
     p, r = solved_sample()
     a = dict(r["alternatives"][0]["assignment"])
