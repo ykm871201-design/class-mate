@@ -275,4 +275,5 @@ App.start = async function () {
   if (last) { try { await App.openProject(last); App.state.tab = tab; App.toast('지난번 작업하던 프로젝트를 다시 열었습니다.', 'ok'); } catch (_) { App.state.tab = 'project'; } }
   App.state.share = share;
   App.setShare(share);
+  App.update.init();
 };

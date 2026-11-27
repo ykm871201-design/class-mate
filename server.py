@@ -6,6 +6,7 @@
 import base64
 import json
 import os
+import time
 import socket
 import sys
 import threading
@@ -32,14 +33,68 @@ def default_data_dir():
 
 
 from app import ai as ai_mod  # noqa: E402
-from app import defaults, evaluate, excel_io, precheck, solver  # noqa: E402
+from app import defaults, evaluate, excel_io, precheck, solver, updater  # noqa: E402
 from app.storage import Storage  # noqa: E402
 
-VERSION = "1.0.0"
+VERSION = "1.0.2"
 DATA_DIR = os.environ.get("CLASSPLAN_DATA") or default_data_dir()
 STATIC = os.path.join(BASE, "static")
 store = Storage(DATA_DIR)
 aisvc = ai_mod.AIService(DATA_DIR)
+UPDATE_MARKER = os.path.join(DATA_DIR, ".update_restart")
+APP_SETTINGS = os.path.join(DATA_DIR, "app_settings.json")
+
+
+def app_settings():
+    s = {"auto_update_check": True}
+    try:
+        with open(APP_SETTINGS, encoding="utf-8") as f:
+            s.update(json.load(f))
+    except (OSError, ValueError):
+        pass
+    return s
+
+
+def save_app_settings(d):
+    s = app_settings()
+    if "auto_update_check" in d:
+        s["auto_update_check"] = bool(d["auto_update_check"])
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(APP_SETTINGS, "w", encoding="utf-8") as f:
+        json.dump(s, f, ensure_ascii=False)
+    return s
+
+
+def update_status():
+    mode = updater.install_mode()
+    return {"version": VERSION, "mode": mode, "auto_check": app_settings()["auto_update_check"],
+            "mode_label": {"installer": "설치판", "portable": "휴대용(zip)", "source": "소스 실행"}[mode],
+            "page": updater.RELEASES_PAGE}
+
+
+def start_update():
+    """새 설치 파일을 내려받아 검증하고, 설치 프로그램을 띄운 뒤 이 프로그램을 종료한다.
+    설치가 끝나면 설치 프로그램이 학급 편성 도우미를 다시 실행한다."""
+    test_file = os.environ.get("CLASSPLAN_UPDATE_TEST_FILE")  # 자동 테스트 전용 (실제 사용자는 쓰지 않음)
+    if updater.install_mode() != "installer" and not test_file:
+        raise updater.UpdateError("설치 파일로 설치한 경우에만 자동 업데이트할 수 있습니다. 내려받기 페이지에서 새 버전을 받으세요.")
+    if test_file:
+        path, latest = test_file, "테스트"
+    else:
+        info = updater.check(VERSION)
+        if not info["newer"]:
+            raise updater.UpdateError("이미 최신 버전입니다.")
+        if not info["setup"]:
+            raise updater.UpdateError("새 버전의 설치 파일이 아직 준비되지 않았습니다. 몇 분 뒤 다시 시도하세요.")
+        path, latest = updater.download(info["setup"]), info["latest"]
+    with open(UPDATE_MARKER, "w", encoding="utf-8") as f:
+        f.write(str(time.time()))
+    updater.launch_installer(path)
+    threading.Timer(1.5, lambda: os._exit(0)).start()  # 설치가 파일을 바꿀 수 있도록 곧 종료
+    return {"ok": True, "latest": latest,
+            "message": "업데이트를 설치하고 있습니다. 프로그램이 잠시 꺼졌다가 자동으로 다시 열립니다. 이 화면은 그대로 두세요."}
+
+
 JOBS = {}
 JOBS_LOCK = threading.Lock()
 PORT = 8765
@@ -164,8 +219,26 @@ class Handler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------ API
     def _api(self, method, parts):
         p0 = parts[0]
+        if p0 == "update":
+            sub = parts[1] if len(parts) > 1 else ""
+            if sub == "status" and method == "GET":
+                return self._send(200, update_status())
+            if method == "POST" and sub == "settings":
+                save_app_settings(self._body())
+                return self._send(200, update_status())
+            if method == "POST" and sub == "check":
+                try:
+                    return self._send(200, dict(updater.check(VERSION), ok=True, mode=updater.install_mode()))
+                except updater.UpdateError as e:
+                    return self._send(200, {"ok": False, "error": str(e), "current": VERSION})
+            if method == "POST" and sub == "install":
+                try:
+                    return self._send(200, start_update())
+                except updater.UpdateError as e:
+                    return self._send(400, {"error": str(e)})
+            raise ApiError("not found", 404)
         if p0 == "info" and method == "GET":
-            return self._send(200, {"version": VERSION, "data_dir": store.dir, "projects_dir": store.pdir, "backups_dir": store.bdir,
+            return self._send(200, {"version": VERSION, "pid": os.getpid(), "data_dir": store.dir, "projects_dir": store.pdir, "backups_dir": store.bdir,
                                     "ai": {"enabled": aisvc.public_settings()["enabled"]}})
         if p0 == "projects":
             return self._projects(method, parts[1:])
@@ -357,7 +430,16 @@ def main():
     print(" 자료 저장 위치:", store.dir)
     print(" 이 창을 닫으면 프로그램이 종료됩니다. (자료는 자동 저장됨)")
     print("=" * 60)
-    if not os.environ.get("CLASSPLAN_NO_BROWSER"):
+    reopened = False
+    try:  # 업데이트 직후 다시 켜진 경우: 열려 있던 브라우저 화면이 스스로 다시 연결되므로 새 창을 열지 않음
+        if os.path.exists(UPDATE_MARKER):
+            reopened = time.time() - os.path.getmtime(UPDATE_MARKER) < 900
+            os.remove(UPDATE_MARKER)
+    except OSError:
+        pass
+    if reopened:
+        print(" 업데이트가 끝나 다시 실행되었습니다.")
+    if not os.environ.get("CLASSPLAN_NO_BROWSER") and not reopened:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         httpd.serve_forever()
